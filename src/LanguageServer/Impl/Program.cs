@@ -18,6 +18,8 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.Python.Core.IO;
 using Microsoft.Python.Core.OS;
 using Microsoft.Python.Core.Services;
@@ -40,14 +42,26 @@ namespace Microsoft.Python.LanguageServer.Server {
                 messageFormatter.JsonSerializer.ConstructorHandling = ConstructorHandling.AllowNonPublicDefaultConstructor;
                 messageFormatter.JsonSerializer.Converters.Add(new UriConverter());
 
-                using (var cin = Console.OpenStandardInput())
+                //Console.WriteLine(Dns.GetHostName());
+                IPHostEntry ipHostInfo = Dns.GetHostEntry(Dns.GetHostName());
+                IPAddress ipAddress = ipHostInfo.AddressList[0];
+                //Console.WriteLine(ipAddress);
+                IPEndPoint localEndPoint = new IPEndPoint(ipAddress, 8088);
+                var sockIn = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                sockIn.Bind(localEndPoint);
+               
+                Socket clientSocket = sockIn.Accept();
+
+                using (NetworkStream socketStreamIn = new NetworkStream(sockIn))
+                using (var sockOut = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp))
+                using (NetworkStream socketStreamOut = new NetworkStream(sockIn))
+                //using (var cin = Console.OpenStandardInput())
                 using (var cout = Console.OpenStandardOutput())
                 using (var server = new Implementation.LanguageServer())
-                using (var rpc = new LanguageServerJsonRpc(cout, cin, messageFormatter, server)) {
+                using (var rpc = new LanguageServerJsonRpc(socketStreamOut, socketStreamIn, messageFormatter, server)) {
                     rpc.TraceSource.Switch.Level = SourceLevels.Error;
                     rpc.SynchronizationContext = new SingleThreadSynchronizationContext();
                     var clientApp = new ClientApplication(rpc);
-
                     var osp = new OSPlatform();
                     services
                         .AddService(clientApp)
